@@ -68,6 +68,8 @@ val commonSettings = Sonatype.sonatypeSettings ++ assemblySettings ++ Seq(
   scalastyleSources in Compile ++= (unmanagedSourceDirectories in Test).value,
   testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v"),
 
+  updateOptions := updateOptions.value.withCachedResolution(true),
+
   coverageExcludedPackages := Seq(
     "com\\.spotify\\.scio\\.examples\\..*",
     "com\\.spotify\\.scio\\.repl\\..*",
