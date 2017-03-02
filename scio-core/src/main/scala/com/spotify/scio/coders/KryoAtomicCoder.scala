@@ -127,7 +127,85 @@ private[scio] class KryoAtomicCoder[T] extends AtomicCoder[T] {
       ByteStreams.readFully(inStream, value)
       kryo.get().readClassAndObject(new Input(value))
     }
+//    logger.info("CODER DEBUG KryoAtomicCoder#decode " + o + " " + ScioUtil.debugLocation)
     o.asInstanceOf[T]
+  }
+
+  /*
+  override def getEncodedElementByteSize(value: T, context: Context): Long = value match {
+    case (key, values: Wrappers.JIterableWrapper[_]) =>
+      val i = values.iterator
+      val keySize = kryoEncodedElementByteSize(key, context: Context)
+      val valSize = if (i.hasNext) {
+        kryoEncodedElementByteSize(i.next(), context: Context)
+      } else {
+        0
+      }
+      values.underlying match {
+        case xs: JCollection[_] =>
+          logger.info("CODER DEBUG KryoAtomicCoder#getEncodedElementByteSize JCollection " +
+            s"$values ${values.getClass} ${xs.getClass} " + ScioUtil.debugLocation)
+          keySize + xs.size() * valSize
+        case _ =>
+          logger.info("CODER DEBUG KryoAtomicCoder#getEncodedElementByteSize ??? " +
+            s"$values ${values.getClass} " + ScioUtil.debugLocation)
+          // FIXME
+          keySize + valSize
+      }
+    case _ =>
+      super.getEncodedElementByteSize(value, context)
+  }
+  */
+  override def getEncodedElementByteSize(value: T, context: Context): Long =
+    throw new NotImplementedError("CODER DEBUG")
+
+  override def registerByteSizeObserver(value: T, observer: ElementByteSizeObserver,
+                                        context: Context): Unit = value match {
+    case (key, wrapped: Wrappers.JIterableWrapper[_]) =>
+      observer.update(kryoEncodedElementByteSize(key, context))
+      val underlying = wrapped.underlying
+      val isO = underlying.isInstanceOf[ElementByteSizeObservableIterable[_, _]]
+      val isC = underlying.isInstanceOf[JCollection[_]]
+      logger.info(s"CODER DEBUG KryoAtomicCoder#registerByteSizeObserver " +
+        s"${wrapped.getClass} ${underlying.getClass} $isO $isC")
+      underlying match {
+        case xs: ElementByteSizeObservableIterable[_, _] =>
+          logger.info("CODER DEBUG KryoAtomicCoder#registerByteSizeObserver ElementByteSizeObservableIterable")
+          xs.addObserver(new IteratorObserver(observer, underlying.isInstanceOf[JCollection[_]]))
+        case _: JCollection[_] =>
+          logger.info("CODER DEBUG KryoAtomicCoder#registerByteSizeObserver JCollection")
+          observer.update(kryoEncodedElementByteSize(value, context))
+        case _ =>
+          logger.info(s"CODER DEBUG KryoAtomicCoder#registerByteSizeObserver ${underlying.getClass}")
+          val iter = underlying.iterator()
+          while (iter.hasNext) {
+            observer.update(kryoEncodedElementByteSize(iter.next(), context))
+          }
+      }
+    case _ =>
+      observer.update(kryoEncodedElementByteSize(value, context))
+  }
+
+  private def kryoEncodedElementByteSize(obj: Any, context: Context): Long = {0
+    val s = new CountingOutputStream(ByteStreams.nullOutputStream())
+    val output = new Output(s)
+    kryo.get().writeClassAndObject(output, obj)
+    output.flush()
+    if (context.isWholeStream) s.getCount else s.getCount + VarInt.getLength(s.getCount)
+  }
+
+  /** Ported from [[IterableLikeCoder]] .*/
+  private class IteratorObserver(val outerObserver: ElementByteSizeObserver,
+                                 val countable: Boolean) extends Observer {
+    outerObserver.update(if (countable) 4L else 5L)
+    override def update(o: Observable, arg: scala.Any): Unit = {
+      require(arg.isInstanceOf[Long] || arg.isInstanceOf[JLong], "unexpected parameter object")
+      if (countable) {
+        outerObserver.update(o, arg)
+      } else {
+        outerObserver.update(o, 1L + arg.asInstanceOf[Long])
+      }
+    }
   }
 
 }
