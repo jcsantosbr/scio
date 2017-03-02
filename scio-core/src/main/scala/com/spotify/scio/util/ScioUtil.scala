@@ -38,6 +38,16 @@ import scala.reflect.ClassTag
 
 private[scio] object ScioUtil {
 
+  def debugLocation: String = {
+    val s = Thread.currentThread().getStackTrace
+    s.drop(1)
+      .find { e =>
+        val n = e.getClassName
+        n.startsWith("org.apache.beam.") && n != "org.apache.beam.sdk.util.CoderUtils"
+      }
+      .map(_.toString.replace("org.apache.beam.", "")).getOrElse("null") + "\n" + s.mkString("\n")
+  }
+
   private val logger = LoggerFactory.getLogger(this.getClass)
 
   def isLocalUri(uri: URI): Boolean = uri.getScheme == null || uri.getScheme == "file"

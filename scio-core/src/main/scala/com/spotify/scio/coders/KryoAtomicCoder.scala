@@ -18,10 +18,13 @@
 package com.spotify.scio.coders
 
 import java.io.{ByteArrayOutputStream, IOException, InputStream, OutputStream}
+import java.lang.{Long => JLong}
+import java.util.{Observable, Observer, Collection => JCollection}
 
-import com.google.common.io.ByteStreams
+import com.google.common.io.{ByteStreams, CountingOutputStream}
 import com.google.common.reflect.ClassPath
 import com.google.protobuf.Message
+import com.spotify.scio.util.ScioUtil
 import com.twitter.chill._
 import com.twitter.chill.algebird.AlgebirdRegistrar
 import com.twitter.chill.protobuf.ProtobufSerializer
@@ -30,9 +33,11 @@ import org.apache.avro.specific.SpecificRecordBase
 import org.apache.beam.sdk.coders.Coder.Context
 import org.apache.beam.sdk.coders._
 import org.apache.beam.sdk.util.VarInt
+import org.apache.beam.sdk.util.common.{ElementByteSizeObservableIterable, ElementByteSizeObservableIterator, ElementByteSizeObserver}
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
+import scala.collection.convert.Wrappers
 import scala.collection.convert.Wrappers.JIterableWrapper
 
 private object KryoRegistrarLoader {
@@ -69,6 +74,9 @@ private object KryoRegistrarLoader {
 private[scio] class KryoAtomicCoder[T] extends AtomicCoder[T] {
 
   @transient
+  private lazy val logger = LoggerFactory.getLogger(this.getClass)
+
+  @transient
   private lazy val kryo: ThreadLocal[Kryo] = new ThreadLocal[Kryo] {
     override def initialValue(): Kryo = {
       val k = KryoSerializer.registered.newKryo()
@@ -96,6 +104,7 @@ private[scio] class KryoAtomicCoder[T] extends AtomicCoder[T] {
   }
 
   override def encode(value: T, outStream: OutputStream, context: Context): Unit = {
+//    logger.info("CODER DEBUG KryoAtomicCoder#encode " + value + " " + ScioUtil.debugLocation)
     if (value == null) {
       throw new CoderException("cannot encode a null value")
     }

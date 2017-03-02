@@ -22,13 +22,22 @@ import java.lang.{Iterable => JIterable}
 import com.esotericsoftware.kryo.Kryo
 import com.esotericsoftware.kryo.io.{Input, Output}
 import com.google.common.collect.Lists
+import com.spotify.scio.util.ScioUtil
 import com.twitter.chill.KSerializer
+import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
+import scala.collection.convert.Wrappers
 
 private class JIterableWrapperSerializer[T] extends KSerializer[Iterable[T]] {
 
+  @transient
+  private lazy val logger = LoggerFactory.getLogger(this.getClass)
+
   override def write(kser: Kryo, out: Output, obj: Iterable[T]): Unit = {
+    val underlying = obj.asInstanceOf[Wrappers.JIterableWrapper[T]].underlying
+    logger.info("CODER DEBUG JIterableWrapperSerializer#write " +
+      underlying.getClass + " " + ScioUtil.debugLocation)
     val i = obj.iterator
     while (i.hasNext) {
       out.writeBoolean(true)
@@ -43,6 +52,7 @@ private class JIterableWrapperSerializer[T] extends KSerializer[Iterable[T]] {
       val item = kser.readClassAndObject(in).asInstanceOf[T]
       list.add(item)
     }
+    logger.info("CODER DEBUG JIterableWrapperSerializer#read " + ScioUtil.debugLocation)
     list.asInstanceOf[JIterable[T]].asScala
   }
 
